@@ -1,0 +1,292 @@
+import datetime
+import random
+TICKET_PRICES = {
+    "Morning":   {"Standard": 120, "Premium": 180, "VIP": 250},
+    "Afternoon": {"Standard": 150, "Premium": 200, "VIP": 300},
+    "Evening":   {"Standard": 180, "Premium": 250, "VIP": 350},
+    "Night":     {"Standard": 200, "Premium": 280, "VIP": 400},
+}
+
+def generate_booking_id():
+    return f"BK{random.randint(100000, 999999)}"
+
+def seat_label(row, col):
+    return f"{chr(65 + row)}{col + 1}"  # e.g. A1, B3
+
+def parse_seat(label):
+    """Convert 'A1' → (row=0, col=0)."""
+    label = label.upper().strip()
+    if len(label) < 2:
+        raise ValueError("Invalid seat label.")
+    row = ord(label[0]) - 65
+    try:
+        col = int(label[1:]) - 1
+    except ValueError:
+        raise ValueError("Invalid seat number.")
+    return row, col
+
+class SeatGrid:
+    ROW_TYPE = {0: "VIP", 1: "VIP", 2: "Premium", 3: "Premium",
+                4: "Standard", 5: "Standard", 6: "Standard", 7: "Standard"}
+
+    def __init__(self, rows=8, cols=10):
+        self.rows = rows
+        self.cols = cols
+        self.grid = [[None] * cols for _ in range(rows)]
+
+    def get_seat_type(self, row):
+        return self.ROW_TYPE.get(row, "Standard")
+
+    def display(self, show_type=True):
+        print("\n      " + "  ".join(f"{c+1:>2}" for c in range(self.cols)))
+        print("      " + "─" * (self.cols * 4))
+        for r in range(self.rows):
+            row_lbl = chr(65 + r)
+            row_type = self.get_seat_type(r)
+            seats_str = ""
+            for c in range(self.cols):
+                if self.grid[r][c] is None:
+                    seats_str += "  ◯ "
+                else:
+                    seats_str += "  ✖ "
+            type_tag = f"[{row_type}]" if show_type else ""
+            print(f"  {row_lbl} {type_tag:<10}{seats_str}")
+        print("\n  ◯ = Available   ✖ = Booked")
+
+    def is_available(self, row, col):
+        return (0 <= row < self.rows and
+                0 <= col < self.cols and
+                self.grid[row][col] is None)
+
+    def book_seat(self, row, col, booking_id):
+        if not self.is_available(row, col):
+            raise Exception(f"Seat {seat_label(row, col)} is not available.")
+        self.grid[row][col] = booking_id
+
+    def release_seat(self, row, col):
+        self.grid[row][col] = None
+
+    def available_count(self):
+        return sum(1 for r in range(self.rows)
+                   for c in range(self.cols)
+                   if self.grid[r][c] is None)
+
+
+class ShowTime:
+    """Represents one screening of a movie."""
+    def __init__(self, movie_name, hall, slot, show_date):
+        self.movie_name = movie_name
+        self.hall = hall
+        self.slot = slot        
+        self.show_date = show_date
+        self.seat_grid = SeatGrid()
+
+    def get_price(self, row):
+        seat_type = self.seat_grid.get_seat_type(row)
+        return TICKET_PRICES[self.slot][seat_type]
+
+    def __str__(self):
+        return (f"{self.movie_name} | {self.hall} | "
+                f"{self.slot} | {self.show_date} | "
+                f"Available: {self.seat_grid.available_count()} seats")
+
+
+class Booking:
+    """A confirmed booking record."""
+    def __init__(self, customer_name, customer_phone, showtime, seats):
+        self.booking_id = generate_booking_id()
+        self.customer_name = customer_name
+        self.customer_phone = customer_phone
+        self.showtime = showtime
+        self.seats = seats   # list of (row, col)
+        self.booked_at = datetime.datetime.now()
+        self.total_amount = sum(showtime.get_price(r) for r, c in seats)
+
+    def print_confirmation(self):
+        print("\n" + "=" * 52)
+        print("       🎬 CINEPLEX BOOKING CONFIRMATION")
+        print("=" * 52)
+        print(f"  Booking ID   : {self.booking_id}")
+        print(f"  Customer     : {self.customer_name}")
+        print(f"  Phone        : {self.customer_phone}")
+        print(f"  Movie        : {self.showtime.movie_name}")
+        print(f"  Hall         : {self.showtime.hall}")
+        print(f"  Date         : {self.showtime.show_date}")
+        print(f"  Slot         : {self.showtime.slot}")
+        print("─" * 52)
+        print(f"  {'Seat':<8} {'Type':<12} {'Price':>8}")
+        print(f"  {'─'*35}")
+        for row, col in self.seats:
+            lbl = seat_label(row, col)
+            stype = self.showtime.seat_grid.get_seat_type(row)
+            price = self.showtime.get_price(row)
+            print(f"  {lbl:<8} {stype:<12} ₹{price:>7.2f}")
+        print("─" * 52)
+        print(f"  {'TOTAL AMOUNT':<35} ₹{self.total_amount:>8.2f}")
+        print("=" * 52)
+        print(f"  Booked at: {self.booked_at.strftime('%d-%m-%Y %H:%M:%S')}")
+        print("  Enjoy your movie! 🍿")
+        print("=" * 52)
+
+
+class Cinema:
+    """Top-level class managing shows, bookings, cancellations."""
+    def __init__(self, name):
+        self.name = name
+        self.shows = []
+        self.bookings = {}   # booking_id → Booking
+
+    def add_show(self, movie, hall, slot, date_str):
+        show = ShowTime(movie, hall, slot, date_str)
+        self.shows.append(show)
+        print(f"  ✅ Show added: {show}")
+
+    def list_shows(self):
+        if not self.shows:
+            print("  No shows scheduled.")
+            return
+        print(f"\n{'='*60}")
+        print(f"  🎬 Available Shows — {self.name}")
+        print(f"{'='*60}")
+        for i, s in enumerate(self.shows, 1):
+            print(f"  {i}. {s}")
+        print(f"{'='*60}")
+
+    def book_tickets(self, show_index, customer_name, phone, seat_labels):
+        if show_index < 0 or show_index >= len(self.shows):
+            print("  ❌ Invalid show selection.")
+            return
+
+        show = self.shows[show_index]
+        booked_seats = []
+
+        for label in seat_labels:
+            try:
+                row, col = parse_seat(label)
+                if not show.seat_grid.is_available(row, col):
+                    print(f"  ❌ Seat {label.upper()} is already booked!")
+                    # Release all booked so far on failure
+                    for r, c in booked_seats:
+                        show.seat_grid.release_seat(r, c)
+                    return
+                booked_seats.append((row, col))
+            except Exception as e:
+                print(f"  ❌ {e}")
+                return
+
+        booking = Booking(customer_name, phone, show, booked_seats)
+        temp_id = booking.booking_id
+        for row, col in booked_seats:
+            show.seat_grid.book_seat(row, col, temp_id)
+        self.bookings[temp_id] = booking
+        booking.print_confirmation()
+
+    def cancel_booking(self, booking_id):
+        if booking_id not in self.bookings:
+            print(f"  ❌ Booking ID {booking_id} not found.")
+            return
+        booking = self.bookings.pop(booking_id)
+        show = booking.showtime
+        for row, col in booking.seats:
+            show.seat_grid.release_seat(row, col)
+        print(f"\n  🔴 Booking {booking_id} cancelled.")
+        print(f"     {len(booking.seats)} seat(s) released for {show.movie_name}.")
+
+    def view_booking(self, booking_id):
+        if booking_id in self.bookings:
+            self.bookings[booking_id].print_confirmation()
+        else:
+            print(f"  ❌ Booking {booking_id} not found.")
+
+
+# ─────────────────────────────────────────────
+#  Menu-Driven Main Program
+# ─────────────────────────────────────────────
+
+def main():
+    cinema = Cinema("CinePlex Multiplex")
+
+    # Pre-loaded shows
+    today = datetime.date.today().strftime("%d-%m-%Y")
+    cinema.add_show("Pushpa 2",      "Hall A", "Morning",   today)
+    cinema.add_show("Kalki 2898 AD", "Hall B", "Evening",   today)
+    cinema.add_show("RRR",           "Hall A", "Night",     today)
+    cinema.add_show("Dune Part 2",   "Hall C", "Afternoon", today)
+
+    while True:
+        print("\n" + "="*42)
+        print("   🎬 MOVIE TICKET BOOKING SYSTEM")
+        print("="*42)
+        print("  1. View All Shows")
+        print("  2. View Seat Layout (for a show)")
+        print("  3. Book Tickets")
+        print("  4. Cancel Booking")
+        print("  5. View Booking Details")
+        print("  6. Add New Show (Admin)")
+        print("  7. Exit")
+        print("="*42)
+
+        choice = input("  Enter choice (1-7): ").strip()
+
+        if choice == "1":
+            cinema.list_shows()
+
+        elif choice == "2":
+            cinema.list_shows()
+            try:
+                idx = int(input("  Enter Show Number: ")) - 1
+                show = cinema.shows[idx]
+                print(f"\n  🎥 Seat Layout: {show.movie_name} | {show.slot}")
+                print("  Rows A-B: VIP | C-D: Premium | E-H: Standard")
+                show.seat_grid.display()
+            except (ValueError, IndexError):
+                print("  ❌ Invalid show number.")
+
+        elif choice == "3":
+            cinema.list_shows()
+            try:
+                idx = int(input("  Enter Show Number: ")) - 1
+                show = cinema.shows[idx]
+                show.seat_grid.display()
+
+                name  = input("\n  Customer Name : ").strip()
+                phone = input("  Phone Number  : ").strip()
+                seats_input = input("  Enter Seat Labels (e.g. A1,A2,B3): ").strip()
+                seat_list = [s.strip() for s in seats_input.split(",") if s.strip()]
+
+                if not seat_list:
+                    print("  ❌ No seats entered.")
+                else:
+                    cinema.book_tickets(idx, name, phone, seat_list)
+            except (ValueError, IndexError):
+                print("  ❌ Invalid show number.")
+
+        elif choice == "4":
+            bid = input("  Enter Booking ID to cancel: ").strip().upper()
+            cinema.cancel_booking(bid)
+
+        elif choice == "5":
+            bid = input("  Enter Booking ID: ").strip().upper()
+            cinema.view_booking(bid)
+
+        elif choice == "6":
+            movie = input("  Movie Name    : ").strip()
+            hall  = input("  Hall Name     : ").strip()
+            print("  Slots: Morning / Afternoon / Evening / Night")
+            slot  = input("  Slot          : ").strip().capitalize()
+            date  = input("  Date (DD-MM-YYYY): ").strip() or today
+            if slot not in TICKET_PRICES:
+                print("  ❌ Invalid slot.")
+            else:
+                cinema.add_show(movie, hall, slot, date)
+
+        elif choice == "7":
+            print("\n  🎬 Thank you! Enjoy the movies!")
+            break
+
+        else:
+            print("  ⚠️  Invalid choice.")
+
+
+if __name__ == "__main__":
+    main()

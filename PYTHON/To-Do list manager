@@ -1,0 +1,254 @@
+import datetime
+PRIORITIES = {"High": 1, "Medium": 2, "Low": 3}
+
+def format_deadline(deadline_str):
+    """Parse a deadline string into a date object."""
+    try:
+        return datetime.datetime.strptime(deadline_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("Date must be in YYYY-MM-DD format.")
+
+def days_remaining(deadline):
+    today = datetime.date.today()
+    delta = deadline - today
+    return delta.days
+
+class Task:
+    _id_counter = 1
+
+    def __init__(self, title, deadline_str, priority, project, tags=None):
+        self.task_id = Task._id_counter
+        Task._id_counter += 1
+
+        self.title = title
+        self.deadline = format_deadline(deadline_str)
+        self.priority = priority if priority in PRIORITIES else "Medium"
+        self.project = project
+        self.tags = [t.strip().lower() for t in (tags or "").split(",") if t.strip()]
+        self.is_done = False
+        self.created_at = datetime.date.today()
+
+    def mark_done(self):
+        self.is_done = True
+
+    def mark_pending(self):
+        self.is_done = False
+
+    def days_left(self):
+        return days_remaining(self.deadline)
+
+    def status_icon(self):
+        if self.is_done:
+            return "✅"
+        d = self.days_left()
+        if d < 0:
+            return "🔴 OVERDUE"
+        elif d == 0:
+            return "🟠 TODAY"
+        elif d <= 2:
+            return "🟡 SOON"
+        return "🟢"
+
+    def display(self):
+        tags_str = ", ".join(self.tags) if self.tags else "—"
+        days = self.days_left()
+        days_str = f"{days}d left" if days >= 0 else f"{abs(days)}d overdue"
+        print(f"  [{self.task_id:02d}] {self.status_icon()} {self.title}")
+        print(f"        Priority: {self.priority:<8} | Project: {self.project}")
+        print(f"        Deadline: {self.deadline} ({days_str})")
+        print(f"        Tags    : {tags_str}")
+
+    def __str__(self):
+        return f"Task({self.task_id}: {self.title})"
+
+
+class ToDoManager:
+    """Manages all tasks — add, complete, filter, sort, delete."""
+    def __init__(self):
+        self.tasks = []
+
+    def add_task(self, title, deadline_str, priority, project, tags=""):
+        try:
+            task = Task(title, deadline_str, priority, project, tags)
+            self.tasks.append(task)
+            print(f"\n  ✅ Task #{task.task_id} '{title}' added successfully!")
+        except ValueError as e:
+            print(f"\n  ❌ Error: {e}")
+
+    def get_task_by_id(self, task_id):
+        for t in self.tasks:
+            if t.task_id == task_id:
+                return t
+        return None
+
+    def mark_task_done(self, task_id):
+        t = self.get_task_by_id(task_id)
+        if t:
+            t.mark_done()
+            print(f"  ✅ Task #{task_id} marked as DONE.")
+        else:
+            print(f"  ❌ Task #{task_id} not found.")
+
+    def mark_task_pending(self, task_id):
+        t = self.get_task_by_id(task_id)
+        if t:
+            t.mark_pending()
+            print(f"  🔄 Task #{task_id} marked as PENDING.")
+        else:
+            print(f"  ❌ Task #{task_id} not found.")
+
+    def delete_task(self, task_id):
+        t = self.get_task_by_id(task_id)
+        if t:
+            self.tasks.remove(t)
+            print(f"  🗑️ Task #{task_id} deleted.")
+        else:
+            print(f"  ❌ Task #{task_id} not found.")
+
+    def _print_task_list(self, tasks, header="Tasks"):
+        if not tasks:
+            print(f"\n  📋 No tasks to display.")
+            return
+        print(f"\n{'='*55}")
+        print(f"  {header} ({len(tasks)} task(s))")
+        print(f"{'='*55}")
+        
+        sorted_tasks = sorted(tasks,
+                              key=lambda t: (PRIORITIES.get(t.priority, 2), t.deadline))
+        for task in sorted_tasks:
+            task.display()
+            print(f"  {'─'*50}")
+        print(f"{'='*55}")
+
+    def show_all(self):
+        self._print_task_list(self.tasks, "All Tasks")
+
+    def filter_by_project(self, project_name):
+        filtered = [t for t in self.tasks
+                    if t.project.lower() == project_name.lower()]
+        self._print_task_list(filtered, f"Project: {project_name}")
+
+    def filter_by_tag(self, tag):
+        filtered = [t for t in self.tasks if tag.lower() in t.tags]
+        self._print_task_list(filtered, f"Tag: #{tag}")
+
+    def filter_by_priority(self, priority):
+        filtered = [t for t in self.tasks if t.priority == priority]
+        self._print_task_list(filtered, f"Priority: {priority}")
+
+    def show_pending(self):
+        pending = [t for t in self.tasks if not t.is_done]
+        self._print_task_list(pending, "Pending Tasks")
+
+    def show_completed(self):
+        done = [t for t in self.tasks if t.is_done]
+        self._print_task_list(done, "Completed Tasks")
+
+    def show_overdue(self):
+        overdue = [t for t in self.tasks
+                   if not t.is_done and t.days_left() < 0]
+        self._print_task_list(overdue, "⚠️ Overdue Tasks")
+
+    def show_summary(self):
+        total = len(self.tasks)
+        done = sum(1 for t in self.tasks if t.is_done)
+        overdue = sum(1 for t in self.tasks if not t.is_done and t.days_left() < 0)
+        projects = set(t.project for t in self.tasks)
+        print(f"\n{'='*40}")
+        print(f"  📊 Summary")
+        print(f"{'='*40}")
+        print(f"  Total Tasks  : {total}")
+        print(f"  Completed    : {done}")
+        print(f"  Pending      : {total - done}")
+        print(f"  Overdue      : {overdue}")
+        print(f"  Projects     : {', '.join(projects) if projects else 'None'}")
+        print(f"{'='*40}")
+
+def main():
+    manager = ToDoManager()
+
+    manager.add_task("Design Homepage", "2025-12-15", "High", "WebApp", "ui, design")
+    manager.add_task("Write Unit Tests", "2025-12-20", "Medium", "WebApp", "testing")
+    manager.add_task("Buy Groceries", "2025-12-10", "Low", "Personal", "shopping")
+    manager.add_task("Submit Assignment", "2025-12-12", "High", "College", "exam, study")
+
+    while True:
+        print("\n" + "="*42)
+        print("   📝 TO-DO LIST MANAGER")
+        print("="*42)
+        print("  1.  Add New Task")
+        print("  2.  Mark Task as Done")
+        print("  3.  Mark Task as Pending")
+        print("  4.  Delete Task")
+        print("  5.  Show All Tasks")
+        print("  6.  Show Pending Tasks")
+        print("  7.  Show Completed Tasks")
+        print("  8.  Show Overdue Tasks")
+        print("  9.  Filter by Project")
+        print("  10. Filter by Tag")
+        print("  11. Filter by Priority")
+        print("  12. Show Summary")
+        print("  13. Exit")
+        print("="*42)
+
+        choice = input("  Enter choice (1-13): ").strip()
+
+        if choice == "1":
+            title    = input("  Task Title       : ").strip()
+            deadline = input("  Deadline (YYYY-MM-DD): ").strip()
+            print("  Priority options : High / Medium / Low")
+            priority = input("  Priority         : ").strip().capitalize() or "Medium"
+            project  = input("  Project Name     : ").strip() or "General"
+            tags     = input("  Tags (comma separated): ").strip()
+            manager.add_task(title, deadline, priority, project, tags)
+
+        elif choice == "2":
+            tid = int(input("  Task ID to mark DONE: "))
+            manager.mark_task_done(tid)
+
+        elif choice == "3":
+            tid = int(input("  Task ID to mark PENDING: "))
+            manager.mark_task_pending(tid)
+
+        elif choice == "4":
+            tid = int(input("  Task ID to delete: "))
+            manager.delete_task(tid)
+
+        elif choice == "5":
+            manager.show_all()
+
+        elif choice == "6":
+            manager.show_pending()
+
+        elif choice == "7":
+            manager.show_completed()
+
+        elif choice == "8":
+            manager.show_overdue()
+
+        elif choice == "9":
+            proj = input("  Enter Project Name: ").strip()
+            manager.filter_by_project(proj)
+
+        elif choice == "10":
+            tag = input("  Enter Tag: ").strip()
+            manager.filter_by_tag(tag)
+
+        elif choice == "11":
+            print("  Priority options: High / Medium / Low")
+            p = input("  Enter Priority: ").strip().capitalize()
+            manager.filter_by_priority(p)
+
+        elif choice == "12":
+            manager.show_summary()
+
+        elif choice == "13":
+            print("\n  👋 Goodbye! Stay productive.")
+            break
+
+        else:
+            print("  ⚠️  Invalid choice.")
+
+
+if __name__ == "__main__":
+    main()

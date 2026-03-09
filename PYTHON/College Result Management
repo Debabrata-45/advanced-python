@@ -1,0 +1,385 @@
+"""
+=============================================================
+  COLLEGE RESULT MANAGEMENT SYSTEM
+  Concepts: Classes, Inheritance, Dictionaries, GPA/CGPA
+            Calculation, Grade Logic, Report Generation,
+            Teacher & Student Roles, Exception Handling
+=============================================================
+"""
+
+
+# ─────────────────────────────────────────────
+#  Basic Concepts Section
+# ─────────────────────────────────────────────
+
+GRADE_SCALE = [
+    (90, "O",  10),   # Outstanding
+    (80, "A+",  9),
+    (70, "A",   8),
+    (60, "B+",  7),
+    (50, "B",   6),
+    (40, "C",   5),
+    (35, "D",   4),
+    (0,  "F",   0),   # Fail
+]
+
+def marks_to_grade(marks):
+    """Return (grade_letter, grade_point) for given marks."""
+    for cutoff, letter, points in GRADE_SCALE:
+        if marks >= cutoff:
+            return letter, points
+    return "F", 0
+
+def calculate_sgpa(subjects):
+    """
+    subjects: list of dicts with 'credits' and 'grade_point'
+    Returns SGPA rounded to 2 decimal places.
+    """
+    total_credits = sum(s["credits"] for s in subjects)
+    if total_credits == 0:
+        return 0.0
+    weighted = sum(s["credits"] * s["grade_point"] for s in subjects)
+    return round(weighted / total_credits, 2)
+
+def calculate_cgpa(sgpa_list):
+    if not sgpa_list:
+        return 0.0
+    return round(sum(sgpa_list) / len(sgpa_list), 2)
+
+def pass_or_fail(subjects):
+    """A student fails if any subject marks < 35."""
+    return all(s["marks"] >= 35 for s in subjects)
+
+def result_remark(cgpa):
+    if cgpa >= 9.0:  return "🏆 Outstanding"
+    if cgpa >= 8.0:  return "🥇 Excellent"
+    if cgpa >= 7.0:  return "🥈 Very Good"
+    if cgpa >= 6.0:  return "🥉 Good"
+    if cgpa >= 5.0:  return "✅ Average"
+    if cgpa >= 4.0:  return "⚠️ Pass"
+    return "❌ Fail"
+
+
+# ─────────────────────────────────────────────
+#  OOP Section
+# ─────────────────────────────────────────────
+
+class Person:
+    """Base class for Student and Teacher."""
+    def __init__(self, pid, name, email):
+        self.pid = pid
+        self.name = name
+        self.email = email
+
+    def __str__(self):
+        return f"[{self.pid}] {self.name} ({self.email})"
+
+
+class Subject:
+    """A subject with its credit value."""
+    def __init__(self, code, name, credits):
+        self.code = code
+        self.name = name
+        self.credits = credits
+
+    def __str__(self):
+        return f"{self.code}: {self.name} ({self.credits} credits)"
+
+
+class Student(Person):
+    """A student with semesters of results."""
+    def __init__(self, sid, name, email, department, batch):
+        super().__init__(sid, name, email)
+        self.department = department
+        self.batch = batch
+        self.semester_results = {}   # sem_no → list of subject result dicts
+
+    def add_result(self, semester, subject_code, subject_name, credits, marks):
+        grade, gp = marks_to_grade(marks)
+        result_entry = {
+            "code": subject_code,
+            "name": subject_name,
+            "credits": credits,
+            "marks": marks,
+            "grade": grade,
+            "grade_point": gp
+        }
+        if semester not in self.semester_results:
+            self.semester_results[semester] = []
+        # Update if already exists
+        for r in self.semester_results[semester]:
+            if r["code"] == subject_code:
+                r.update(result_entry)
+                return
+        self.semester_results[semester].append(result_entry)
+
+    def get_sgpa(self, semester):
+        if semester not in self.semester_results:
+            return None
+        return calculate_sgpa(self.semester_results[semester])
+
+    def get_cgpa(self):
+        sgpas = []
+        for sem in sorted(self.semester_results.keys()):
+            s = self.get_sgpa(sem)
+            if s is not None:
+                sgpas.append(s)
+        return calculate_cgpa(sgpas)
+
+    def print_marksheet(self, semester=None):
+        print("\n" + "="*60)
+        print("       🎓 COLLEGE RESULT MANAGEMENT SYSTEM")
+        print("="*60)
+        print(f"  Student ID  : {self.pid}")
+        print(f"  Name        : {self.name}")
+        print(f"  Department  : {self.department}")
+        print(f"  Batch       : {self.batch}")
+        print(f"  Email       : {self.email}")
+        print("─"*60)
+
+        semesters_to_show = ([semester] if semester else
+                             sorted(self.semester_results.keys()))
+
+        for sem in semesters_to_show:
+            if sem not in self.semester_results:
+                print(f"  No results for Semester {sem}.")
+                continue
+
+            subjects = self.semester_results[sem]
+            sgpa = self.get_sgpa(sem)
+            passed = pass_or_fail(subjects)
+            status = "PASS ✅" if passed else "FAIL ❌"
+
+            print(f"\n  📘 Semester {sem}  |  SGPA: {sgpa}  |  Status: {status}")
+            print(f"  {'─'*55}")
+            print(f"  {'Code':<8} {'Subject':<25} {'Cr':>3} {'Marks':>6} {'Grade':>6} {'GP':>4}")
+            print(f"  {'─'*55}")
+            for s in subjects:
+                print(f"  {s['code']:<8} {s['name']:<25} {s['credits']:>3} "
+                      f"{s['marks']:>6} {s['grade']:>6} {s['grade_point']:>4}")
+            print(f"  {'─'*55}")
+            total_cr = sum(s['credits'] for s in subjects)
+            print(f"  Total Credits: {total_cr}  |  SGPA: {sgpa}")
+
+        cgpa = self.get_cgpa()
+        remark = result_remark(cgpa)
+        print("="*60)
+        print(f"  Overall CGPA : {cgpa}")
+        print(f"  Remark       : {remark}")
+        print("="*60)
+
+
+class Teacher(Person):
+    """A teacher who can enter marks for students."""
+    def __init__(self, tid, name, email, department):
+        super().__init__(tid, name, email)
+        self.department = department
+
+    def enter_marks(self, student, semester, subject_code, subject_name, credits, marks):
+        if not (0 <= marks <= 100):
+            print(f"  ❌ Marks must be between 0 and 100.")
+            return
+        student.add_result(semester, subject_code, subject_name, credits, marks)
+        grade, gp = marks_to_grade(marks)
+        print(f"  ✅ Marks entered: {student.name} | {subject_name} | "
+              f"Sem {semester} | {marks}/100 | Grade: {grade} | GP: {gp}")
+
+
+class ResultSystem:
+    """Main controller — manages students, teachers, and results."""
+    def __init__(self, college_name):
+        self.college_name = college_name
+        self.students = {}   # sid → Student
+        self.teachers = {}   # tid → Teacher
+
+    def add_student(self, sid, name, email, department, batch):
+        if sid in self.students:
+            print(f"  ⚠️  Student {sid} already exists.")
+            return
+        s = Student(sid, name, email, department, batch)
+        self.students[sid] = s
+        print(f"  ✅ Student added: {s}")
+
+    def add_teacher(self, tid, name, email, department):
+        t = Teacher(tid, name, email, department)
+        self.teachers[tid] = t
+        print(f"  ✅ Teacher added: {t}")
+
+    def get_student(self, sid):
+        if sid not in self.students:
+            print(f"  ❌ Student {sid} not found.")
+            return None
+        return self.students[sid]
+
+    def get_teacher(self, tid):
+        if tid not in self.teachers:
+            print(f"  ❌ Teacher {tid} not found.")
+            return None
+        return self.teachers[tid]
+
+    def show_all_students(self):
+        if not self.students:
+            print("  No students registered.")
+            return
+        print(f"\n{'='*55}")
+        print(f"  👩‍🎓 All Students — {self.college_name}")
+        print(f"{'='*55}")
+        print(f"  {'ID':<8} {'Name':<20} {'Dept':<15} {'CGPA':>6}")
+        print(f"  {'─'*50}")
+        for s in self.students.values():
+            cgpa = s.get_cgpa()
+            cgpa_str = str(cgpa) if s.semester_results else "N/A"
+            print(f"  {s.pid:<8} {s.name:<20} {s.department:<15} {cgpa_str:>6}")
+        print(f"{'='*55}")
+
+    def class_topper(self):
+        """Find student with highest CGPA."""
+        students_with_results = [
+            s for s in self.students.values() if s.semester_results
+        ]
+        if not students_with_results:
+            print("  No results available.")
+            return
+        topper = max(students_with_results, key=lambda s: s.get_cgpa())
+        cgpa = topper.get_cgpa()
+        print(f"\n  🏆 Class Topper: {topper.name} | CGPA: {cgpa} | "
+              f"Dept: {topper.department}")
+
+    def department_report(self, dept):
+        dept_students = [s for s in self.students.values()
+                         if s.department.lower() == dept.lower()
+                         and s.semester_results]
+        if not dept_students:
+            print(f"  No results for department: {dept}")
+            return
+        avg_cgpa = round(
+            sum(s.get_cgpa() for s in dept_students) / len(dept_students), 2)
+        print(f"\n{'='*50}")
+        print(f"  📊 Department Report: {dept}")
+        print(f"{'='*50}")
+        print(f"  Students   : {len(dept_students)}")
+        print(f"  Avg CGPA   : {avg_cgpa}")
+        print(f"{'─'*50}")
+        print(f"  {'Name':<20} {'CGPA':>6} {'Remark'}")
+        print(f"  {'─'*45}")
+        for s in sorted(dept_students, key=lambda x: x.get_cgpa(), reverse=True):
+            print(f"  {s.name:<20} {s.get_cgpa():>6} {result_remark(s.get_cgpa())}")
+        print(f"{'='*50}")
+
+
+# ─────────────────────────────────────────────
+#  Menu-Driven Main Program
+# ─────────────────────────────────────────────
+
+def main():
+    system = ResultSystem("ABC Engineering College")
+
+    # Pre-load sample data
+    system.add_student("S001", "Aarav Sharma",  "aarav@college.edu", "CSE", "2022-26")
+    system.add_student("S002", "Priya Patel",   "priya@college.edu", "CSE", "2022-26")
+    system.add_student("S003", "Rahul Verma",   "rahul@college.edu", "ECE", "2022-26")
+    system.add_teacher("T001", "Prof. Mehta",   "mehta@college.edu", "CSE")
+    system.add_teacher("T002", "Prof. Sharma",  "sharma@college.edu","ECE")
+
+    # Pre-load some results
+    t = system.teachers["T001"]
+    s1 = system.students["S001"]
+    s2 = system.students["S002"]
+    for sub_code, sub_name, cr, m1, m2 in [
+        ("CS101", "Programming",   4, 88, 72),
+        ("CS102", "Data Structures",4, 76, 65),
+        ("MA101", "Mathematics",   3, 90, 80),
+        ("PH101", "Physics",       3, 65, 55),
+    ]:
+        t.enter_marks(s1, 1, sub_code, sub_name, cr, m1)
+        t.enter_marks(s2, 1, sub_code, sub_name, cr, m2)
+
+    while True:
+        print("\n" + "="*42)
+        print("   🎓 COLLEGE RESULT MANAGEMENT")
+        print("="*42)
+        print("  1.  Add Student")
+        print("  2.  Add Teacher")
+        print("  3.  Enter Marks (Teacher)")
+        print("  4.  View Student Marksheet")
+        print("  5.  View Specific Semester Result")
+        print("  6.  View All Students & CGPA")
+        print("  7.  Class Topper")
+        print("  8.  Department Report")
+        print("  9.  List Students")
+        print("  10. Exit")
+        print("="*42)
+
+        choice = input("  Enter choice (1-10): ").strip()
+
+        if choice == "1":
+            sid  = input("  Student ID    : ").strip().upper()
+            name = input("  Name          : ").strip()
+            email= input("  Email         : ").strip()
+            dept = input("  Department    : ").strip().upper()
+            batch= input("  Batch (e.g. 2022-26): ").strip()
+            system.add_student(sid, name, email, dept, batch)
+
+        elif choice == "2":
+            tid  = input("  Teacher ID    : ").strip().upper()
+            name = input("  Name          : ").strip()
+            email= input("  Email         : ").strip()
+            dept = input("  Department    : ").strip().upper()
+            system.add_teacher(tid, name, email, dept)
+
+        elif choice == "3":
+            tid = input("  Teacher ID    : ").strip().upper()
+            teacher = system.get_teacher(tid)
+            if teacher:
+                sid = input("  Student ID    : ").strip().upper()
+                student = system.get_student(sid)
+                if student:
+                    try:
+                        sem  = int(input("  Semester (1-8): "))
+                        code = input("  Subject Code  : ").strip().upper()
+                        name = input("  Subject Name  : ").strip()
+                        cr   = int(input("  Credits (1-5) : "))
+                        marks= float(input("  Marks (0-100) : "))
+                        teacher.enter_marks(student, sem, code, name, cr, marks)
+                    except ValueError:
+                        print("  ❌ Invalid input.")
+
+        elif choice == "4":
+            sid = input("  Student ID: ").strip().upper()
+            student = system.get_student(sid)
+            if student:
+                student.print_marksheet()
+
+        elif choice == "5":
+            sid = input("  Student ID    : ").strip().upper()
+            student = system.get_student(sid)
+            if student:
+                try:
+                    sem = int(input("  Semester No   : "))
+                    student.print_marksheet(semester=sem)
+                except ValueError:
+                    print("  ❌ Invalid semester number.")
+
+        elif choice == "6":
+            system.show_all_students()
+
+        elif choice == "7":
+            system.class_topper()
+
+        elif choice == "8":
+            dept = input("  Department Name (e.g. CSE): ").strip()
+            system.department_report(dept)
+
+        elif choice == "9":
+            system.show_all_students()
+
+        elif choice == "10":
+            print("\n  🎓 Thank you! Goodbye.")
+            break
+
+        else:
+            print("  ⚠️  Invalid choice.")
+
+
+if __name__ == "__main__":
+    main()

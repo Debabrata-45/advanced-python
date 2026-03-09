@@ -1,0 +1,296 @@
+import datetime
+PRODUCT_CATALOG = {
+    "P001": {"name": "Rice (5kg)",       "price": 250.0,  "category": "Grocery"},
+    "P002": {"name": "Cooking Oil (1L)", "price": 180.0,  "category": "Grocery"},
+    "P003": {"name": "Milk (1L)",        "price": 65.0,   "category": "Dairy"},
+    "P004": {"name": "Butter (500g)",    "price": 120.0,  "category": "Dairy"},
+    "P005": {"name": "Toothpaste",       "price": 90.0,   "category": "Personal Care"},
+    "P006": {"name": "Shampoo",          "price": 150.0,  "category": "Personal Care"},
+    "P007": {"name": "Biscuits",         "price": 40.0,   "category": "Snacks"},
+    "P008": {"name": "Chips",            "price": 30.0,   "category": "Snacks"},
+    "P009": {"name": "Notebook",         "price": 50.0,   "category": "Stationery"},
+    "P010": {"name": "Pen Set",          "price": 35.0,   "category": "Stationery"},
+}
+
+CATEGORY_DISCOUNTS = {
+    "Grocery":       5,
+    "Dairy":         0,
+    "Personal Care": 10,
+    "Snacks":        0,
+    "Stationery":    15,
+}
+
+def apply_discount(price, discount_pct):
+    return price * (1 - discount_pct / 100)
+
+def get_gst(category):
+    """Return GST percentage based on product category."""
+    gst_map = {
+        "Grocery": 0, "Dairy": 5, "Personal Care": 18,
+        "Snacks": 12, "Stationery": 12
+    }
+    return gst_map.get(category, 12)
+
+class Product:
+    def __init__(self, barcode, name, price, category):
+        self.barcode = barcode
+        self.name = name
+        self.price = price
+        self.category = category
+
+    @classmethod
+    def from_catalog(cls, barcode):
+        if barcode in PRODUCT_CATALOG:
+            d = PRODUCT_CATALOG[barcode]
+            return cls(barcode, d["name"], d["price"], d["category"])
+        return None
+
+    def __str__(self):
+        return f"{self.name} ({self.category}) — ₹{self.price:.2f}"
+
+
+class CartItem:
+    def __init__(self, product, quantity):
+        self.product = product
+        self.quantity = quantity
+        discount_pct = CATEGORY_DISCOUNTS.get(product.category, 0)
+        self.discount_pct = discount_pct
+        self.unit_price_after_discount = apply_discount(product.price, discount_pct)
+        gst_pct = get_gst(product.category)
+        self.gst_pct = gst_pct
+        self.gst_amount = self.unit_price_after_discount * (gst_pct / 100) * quantity
+        self.subtotal = self.unit_price_after_discount * quantity + self.gst_amount
+
+    def line_summary(self):
+        return {
+            "name": self.product.name,
+            "qty": self.quantity,
+            "mrp": self.product.price,
+            "disc%": self.discount_pct,
+            "unit_price": self.unit_price_after_discount,
+            "gst%": self.gst_pct,
+            "gst_amt": self.gst_amount,
+            "subtotal": self.subtotal
+        }
+
+
+class Bill:
+    _invoice_counter = 1000
+
+    def __init__(self, customer_name, customer_phone):
+        Bill._invoice_counter += 1
+        self.invoice_no = f"INV-{Bill._invoice_counter}"
+        self.customer_name = customer_name
+        self.customer_phone = customer_phone
+        self.date_time = datetime.datetime.now()
+        self.items = []
+        self.extra_discount_pct = 0  # coupon-level discount
+        self.payment_method = "Cash"
+
+    def add_item(self, barcode, quantity):
+        product = Product.from_catalog(barcode)
+        if not product:
+            print(f"  ❌ Barcode '{barcode}' not found in catalog.")
+            return
+        # If already in cart, increase qty
+        for item in self.items:
+            if item.product.barcode == barcode:
+                item.quantity += quantity
+                item.__init__(item.product, item.quantity)
+                print(f"  🔄 Updated {product.name} qty to {item.quantity}.")
+                return
+        cart_item = CartItem(product, quantity)
+        self.items.append(cart_item)
+        print(f"  ➕ Added: {product.name} x{quantity} = ₹{cart_item.subtotal:.2f}")
+
+    def remove_item(self, barcode):
+        self.items = [i for i in self.items if i.product.barcode != barcode]
+        print(f"  🗑️ Item removed.")
+
+    def apply_coupon(self, discount_pct):
+        self.extra_discount_pct = discount_pct
+        print(f"  🎟️ Coupon applied: {discount_pct}% off on total.")
+
+    def compute_totals(self):
+        subtotal = sum(i.subtotal for i in self.items)
+        coupon_disc = subtotal * (self.extra_discount_pct / 100)
+        total = subtotal - coupon_disc
+        gst_total = sum(i.gst_amount for i in self.items)
+        return subtotal, coupon_disc, gst_total, total
+
+    def print_bill(self):
+        subtotal, coupon_disc, gst_total, total = self.compute_totals()
+
+        print("\n" + "=" * 55)
+        print("         🛒 STAR RETAIL STORE")
+        print("     123 Main Street | Ph: 9876543210")
+        print("=" * 55)
+        print(f"  Invoice No : {self.invoice_no}")
+        print(f"  Date/Time  : {self.date_time.strftime('%d-%m-%Y %H:%M:%S')}")
+        print(f"  Customer   : {self.customer_name} | {self.customer_phone}")
+        print(f"  Payment    : {self.payment_method}")
+        print("─" * 55)
+        print(f"  {'Item':<22} {'Qty':>3} {'MRP':>7} {'Disc':>5} {'Amt':>8}")
+        print("─" * 55)
+
+        for item in self.items:
+            s = item.line_summary()
+            print(f"  {s['name']:<22} {s['qty']:>3} "
+                  f"₹{s['mrp']:>6.2f} {s['disc%']:>4}% ₹{s['subtotal']:>7.2f}")
+            if s['gst%'] > 0:
+                print(f"    GST @{s['gst%']}%: ₹{s['gst_amt']:.2f}")
+
+        print("─" * 55)
+        print(f"  {'Subtotal':<38} ₹{subtotal:>8.2f}")
+        if coupon_disc > 0:
+            print(f"  {'Coupon Discount (' + str(self.extra_discount_pct) + '%)':<38} -₹{coupon_disc:>7.2f}")
+        print(f"  {'Total GST (included)':<38} ₹{gst_total:>8.2f}")
+        print("=" * 55)
+        print(f"  {'TOTAL PAYABLE':<38} ₹{total:>8.2f}")
+        print("=" * 55)
+        print("    Thank you for shopping with us! 😊")
+        print("       Visit again • Have a great day")
+        print("=" * 55)
+
+        return total
+
+class Store:
+    def __init__(self, name):
+        self.name = name
+        self.transactions = []
+
+    def show_catalog(self):
+        print(f"\n{'='*55}")
+        print(f"  📦 Product Catalog — {self.name}")
+        print(f"{'='*55}")
+        print(f"  {'Code':<6} {'Name':<22} {'Price':>8} {'Category'}")
+        print(f"  {'─'*52}")
+        for code, d in PRODUCT_CATALOG.items():
+            disc = CATEGORY_DISCOUNTS.get(d['category'], 0)
+            disc_str = f"({disc}% off)" if disc else ""
+            print(f"  {code:<6} {d['name']:<22} ₹{d['price']:>7.2f}  "
+                  f"{d['category']} {disc_str}")
+        print(f"{'='*55}")
+
+    def create_bill(self, customer_name, customer_phone):
+        return Bill(customer_name, customer_phone)
+
+    def record_transaction(self, bill, total):
+        self.transactions.append({
+            "invoice": bill.invoice_no,
+            "customer": bill.customer_name,
+            "date": bill.date_time.strftime('%d-%m-%Y %H:%M'),
+            "items": len(bill.items),
+            "total": total,
+            "payment": bill.payment_method
+        })
+
+    def show_transactions(self):
+        if not self.transactions:
+            print("\n  📋 No transactions yet.")
+            return
+        print(f"\n{'='*62}")
+        print(f"  📊 Transaction History — {self.name}")
+        print(f"{'='*62}")
+        print(f"  {'Invoice':<12} {'Customer':<15} {'Date':<17} {'Items':>5} {'Total':>9}")
+        print(f"  {'─'*58}")
+        for t in self.transactions:
+            print(f"  {t['invoice']:<12} {t['customer']:<15} {t['date']:<17} "
+                  f"{t['items']:>5} ₹{t['total']:>8.2f}")
+        grand_total = sum(t['total'] for t in self.transactions)
+        print(f"  {'─'*58}")
+        print(f"  {'GRAND TOTAL REVENUE':<45} ₹{grand_total:>8.2f}")
+        print(f"{'='*62}")
+
+def main():
+    store = Store("Star Retail")
+    current_bill = None
+
+    while True:
+        print("\n" + "="*42)
+        print("   🏪 RETAIL STORE BILLING SYSTEM")
+        print("="*42)
+        print("  1. Show Product Catalog")
+        print("  2. New Bill (New Customer)")
+        print("  3. Scan / Add Product")
+        print("  4. Remove Product from Cart")
+        print("  5. Apply Coupon Discount")
+        print("  6. Set Payment Method")
+        print("  7. Generate & Print Bill")
+        print("  8. View All Transactions")
+        print("  9. Exit")
+        print("="*42)
+
+        choice = input("  Enter choice (1-9): ").strip()
+
+        if choice == "1":
+            store.show_catalog()
+
+        elif choice == "2":
+            name  = input("  Customer Name : ").strip() or "Walk-in Customer"
+            phone = input("  Phone Number  : ").strip() or "N/A"
+            current_bill = store.create_bill(name, phone)
+            print(f"\n  🧾 New bill started for {name}.")
+
+        elif choice == "3":
+            if not current_bill:
+                print("  ⚠️  Start a new bill first (option 2).")
+            else:
+                barcode = input("  Enter Barcode (e.g. P001): ").strip().upper()
+                try:
+                    qty = int(input("  Quantity: ").strip())
+                    if qty <= 0:
+                        raise ValueError
+                    current_bill.add_item(barcode, qty)
+                except ValueError:
+                    print("  ❌ Invalid quantity.")
+
+        elif choice == "4":
+            if not current_bill:
+                print("  ⚠️  No active bill.")
+            else:
+                barcode = input("  Enter Barcode to remove: ").strip().upper()
+                current_bill.remove_item(barcode)
+
+        elif choice == "5":
+            if not current_bill:
+                print("  ⚠️  No active bill.")
+            else:
+                try:
+                    disc = float(input("  Coupon Discount % (e.g. 5): ").strip())
+                    current_bill.apply_coupon(disc)
+                except ValueError:
+                    print("  ❌ Invalid discount value.")
+
+        elif choice == "6":
+            if not current_bill:
+                print("  ⚠️  No active bill.")
+            else:
+                methods = ["Cash", "Card", "UPI", "Wallet"]
+                print("  Payment: 1.Cash  2.Card  3.UPI  4.Wallet")
+                pm = input("  Choose: ").strip()
+                method_map = {"1": "Cash", "2": "Card", "3": "UPI", "4": "Wallet"}
+                current_bill.payment_method = method_map.get(pm, "Cash")
+                print(f"  💳 Payment set to: {current_bill.payment_method}")
+
+        elif choice == "7":
+            if not current_bill or not current_bill.items:
+                print("  ⚠️  No items in the bill.")
+            else:
+                total = current_bill.print_bill()
+                store.record_transaction(current_bill, total)
+                current_bill = None
+
+        elif choice == "8":
+            store.show_transactions()
+
+        elif choice == "9":
+            print("\n  👋 Thank you! Store closing.")
+            break
+
+        else:
+            print("  ⚠️  Invalid choice.")
+
+
+if __name__ == "__main__":
+    main()

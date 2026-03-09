@@ -1,0 +1,170 @@
+import datetime
+RATE_PER_HOUR = 20  
+
+def calculate_fee(entry_time, exit_time):
+    duration = exit_time - entry_time
+    hours = duration.total_seconds() / 3600
+    hours = max(1, round(hours + 0.5))  
+    return hours * RATE_PER_HOUR, round(hours, 2)
+class Vehicle:
+    def __init__(self, vehicle_no, vehicle_type="Car"):
+        self.vehicle_no = vehicle_no.upper()
+        self.vehicle_type = vehicle_type
+        self.entry_time = datetime.datetime.now()
+
+    def __str__(self):
+        return (f"Vehicle [{self.vehicle_type}] | No: {self.vehicle_no} | "
+                f"Entry: {self.entry_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+class ParkingSpot:
+    def __init__(self, spot_id):
+        self.spot_id = spot_id
+        self.is_occupied = False
+        self.vehicle = None
+
+    def park(self, vehicle):
+        if self.is_occupied:
+            raise Exception(f"Spot {self.spot_id} is already occupied!")
+        self.vehicle = vehicle
+        self.is_occupied = True
+
+    def vacate(self):
+        if not self.is_occupied:
+            raise Exception(f"Spot {self.spot_id} is already empty!")
+        v = self.vehicle
+        self.vehicle = None
+        self.is_occupied = False
+        return v
+
+    def __str__(self):
+        status = f"Occupied by {self.vehicle.vehicle_no}" if self.is_occupied else "Available"
+        return f"Spot {self.spot_id}: {status}"
+
+class ParkingLot:
+    def __init__(self, name, total_spots):
+        self.name = name
+        self.spots = [ParkingSpot(i + 1) for i in range(total_spots)]
+        self.transaction_log = []
+
+    def get_available_spots(self):
+        return [s for s in self.spots if not s.is_occupied]
+
+    def get_occupied_spots(self):
+        return [s for s in self.spots if s.is_occupied]
+
+    def find_vehicle(self, vehicle_no):
+        for spot in self.spots:
+            if spot.is_occupied and spot.vehicle.vehicle_no == vehicle_no.upper():
+                return spot
+        return None
+
+    def vehicle_entry(self, vehicle_no, vehicle_type="Car"):
+        available = self.get_available_spots()
+        if not available:
+            print("❌ Parking Lot FULL! No spots available.")
+            return
+
+        spot = available[0]
+        vehicle = Vehicle(vehicle_no, vehicle_type)
+        spot.park(vehicle)
+        print(f"\n✅ Entry Recorded!")
+        print(f"   {vehicle}")
+        print(f"   Assigned Spot: {spot.spot_id}")
+        print(f"   Available Spots Left: {len(self.get_available_spots())}")
+
+    def vehicle_exit(self, vehicle_no):
+        spot = self.find_vehicle(vehicle_no)
+        if not spot:
+            print(f"❌ Vehicle {vehicle_no.upper()} not found in parking lot.")
+            return
+
+        vehicle = spot.vacate()
+        exit_time = datetime.datetime.now()
+        fee, hours = calculate_fee(vehicle.entry_time, exit_time)
+
+        record = {
+            "vehicle_no": vehicle.vehicle_no,
+            "vehicle_type": vehicle.vehicle_type,
+            "spot": spot.spot_id,
+            "entry": vehicle.entry_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "exit": exit_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "hours": hours,
+            "fee": fee
+        }
+        self.transaction_log.append(record)
+
+        print(f"\n🚗 Exit Recorded!")
+        print(f"   Vehicle No : {vehicle.vehicle_no}")
+        print(f"   Spot       : {spot.spot_id}")
+        print(f"   Duration   : {hours} hour(s)")
+        print(f"   Fee        : ₹{fee}")
+        print(f"   Available Spots: {len(self.get_available_spots())}")
+
+    def show_status(self):
+        print(f"\n{'='*45}")
+        print(f"  {self.name} — Parking Status")
+        print(f"{'='*45}")
+        print(f"  Total Spots    : {len(self.spots)}")
+        print(f"  Occupied       : {len(self.get_occupied_spots())}")
+        print(f"  Available      : {len(self.get_available_spots())}")
+        print(f"{'─'*45}")
+        for spot in self.spots:
+            print(f"  {spot}")
+        print(f"{'='*45}")
+
+    def show_transactions(self):
+        if not self.transaction_log:
+            print("\n📋 No transactions recorded yet.")
+            return
+        print(f"\n{'='*60}")
+        print(f"  Transaction Log — {self.name}")
+        print(f"{'='*60}")
+        for i, t in enumerate(self.transaction_log, 1):
+            print(f"  #{i} | {t['vehicle_no']} ({t['vehicle_type']}) | "
+                  f"Spot {t['spot']} | {t['hours']}h | ₹{t['fee']}")
+        total = sum(t['fee'] for t in self.transaction_log)
+        print(f"{'─'*60}")
+        print(f"  Total Revenue: ₹{total}")
+        print(f"{'='*60}")
+
+def main():
+    lot = ParkingLot("City Centre Parking", total_spots=5)
+
+    while True:
+        print("\n" + "="*40)
+        print("   🅿️  PARKING LOT MANAGEMENT SYSTEM")
+        print("="*40)
+        print("  1. Vehicle Entry")
+        print("  2. Vehicle Exit")
+        print("  3. Show Parking Status")
+        print("  4. View Transactions")
+        print("  5. Exit Program")
+        print("="*40)
+
+        choice = input("  Enter choice (1-5): ").strip()
+
+        if choice == "1":
+            vno = input("  Enter Vehicle Number: ").strip()
+            vtype = input("  Vehicle Type (Car/Bike/Truck) [Car]: ").strip() or "Car"
+            lot.vehicle_entry(vno, vtype)
+
+        elif choice == "2":
+            vno = input("  Enter Vehicle Number to Exit: ").strip()
+            lot.vehicle_exit(vno)
+
+        elif choice == "3":
+            lot.show_status()
+
+        elif choice == "4":
+            lot.show_transactions()
+
+        elif choice == "5":
+            print("\n  👋 Goodbye! Have a great day.")
+            break
+
+        else:
+            print("  ⚠️  Invalid choice. Please enter 1-5.")
+
+
+if __name__ == "__main__":
+    main()
